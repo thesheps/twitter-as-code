@@ -1,11 +1,9 @@
 package main
 
 import (
-	"os"
 	"strconv"
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/dghubble/go-twitter/twitter"
-	"github.com/dghubble/oauth1"
 )
 
 // tweet factory method which returns a pointer to the created tweet resource
@@ -26,13 +24,16 @@ func tweet() *schema.Resource {
 }
 
 func tweetCreate(d *schema.ResourceData, m interface{}) error {
-	create(d, d.Get("message").(string))
+	client := m.(*twitter.Client)
+	tweet, _, _ := client.Statuses.Update(d.Get("message").(string), nil)
+	id := strconv.FormatInt(tweet.ID, 10)
+	d.SetId(id)
 
 	return tweetRead(d, m)
 }
 
 func tweetRead(d *schema.ResourceData, m interface{}) error {
-	client := createClient()
+	client := m.(*twitter.Client)
 	id, _ := strconv.ParseInt(d.Id(), 10, 64)
 	tweet, _, _ := client.Statuses.Show(id, nil)
 	d.Set("message", tweet.Text)
@@ -41,36 +42,18 @@ func tweetRead(d *schema.ResourceData, m interface{}) error {
 }
 
 func tweetUpdate(d *schema.ResourceData, m interface{}) error {
-	delete(d)
-	create(d, d.Get("message").(string))
+	tweetDelete(d, m)
+	tweetCreate(d, m)
 
 	return nil
 }
 
 func tweetDelete(d *schema.ResourceData, m interface{}) error {
-	delete(d)
+	client := m.(*twitter.Client)
+	id, _ := strconv.ParseInt(d.Id(), 10, 64)
+	client.Statuses.Destroy(id, nil)
+
 	d.SetId("")
 
 	return nil
-}
-
-func createClient() *twitter.Client {
-	config := oauth1.NewConfig(os.Getenv("consumerKey"), os.Getenv("consumerSecret"))
-	token := oauth1.NewToken(os.Getenv("token"), os.Getenv("tokenSecret"))
-	httpClient := config.Client(oauth1.NoContext, token)
-	
-	return twitter.NewClient(httpClient)
-}
-
-func create(d *schema.ResourceData, message string) {
-	client := createClient()
-	tweet, _, _ := client.Statuses.Update(message, nil)
-	id := strconv.FormatInt(tweet.ID, 10)
-	d.SetId(id)
-}
-
-func delete(d *schema.ResourceData) {
-	client := createClient()
-	id, _ := strconv.ParseInt(d.Id(), 10, 64)
-	client.Statuses.Destroy(id, nil)
 }
